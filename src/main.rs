@@ -1,7 +1,8 @@
 mod complex;
 mod system;
 
-use system::{PID, DynamicalSystem};
+use system::{PID, Model, DynamicalSystem};
+use complex::ComplexNumber;
 
 use egui::widgets::Widget;
 
@@ -9,12 +10,11 @@ fn main() {
     eframe::run_native("My first App", eframe::NativeOptions::default(), Box::new(|cc| Box::new(MyApp::new(cc))));
 }
 
-
 struct MyApp {
-    poles: Vec<(f64,f64)>,
-    zeros: Vec<(f64,f64)>,
+    model: Model,
     pointer_mode: PointerMode,
-    pid: PID
+    pid: PID,
+    bode_link: egui::widgets::plot::LinkedAxisGroup
 }
 
 #[derive(PartialEq,Eq)]
@@ -36,35 +36,63 @@ impl PointerMode {
     }
 }
 
-
 impl MyApp {
     fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         Self {
-            poles: vec![],
-            zeros: vec![],
+            model: Model::default(),
             pointer_mode: PointerMode::AddPole,
-            pid: PID::default()
+            pid: PID::default(),
+            bode_link: egui::widgets::plot::LinkedAxisGroup::new(true, false)
         }
     }
 }
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::containers::Window::new("left")
+        egui::containers::Window::new("first")
             .default_pos((0.0,0.0))
             .show(ctx, |ui| {
 
             ui.heading("Heyyy");
-            get_bode_plot(ui, &self.poles, &self.zeros, &mut self.pid);
+            get_bode_plot(ui, &self.model, &self.pid, &self.bode_link);
         });
 
-        egui::containers::Window::new("right")
+        egui::containers::Window::new("second")
             .default_pos((100.0,0.0))
             .show(ctx, |ui| {
 
-            get_pz_map(ui, &mut self.pointer_mode, &mut self.poles, &mut self.zeros, &mut self.pid);
+            get_pz_map(ui, &mut self.pointer_mode, &mut self.model, &mut self.pid);
+            ui.add(egui::widgets::Label::new(format!("Poles: {:?}", self.model.get_poles())));
+            ui.add(egui::widgets::Label::new(format!("Zeros: {:?}", self.model.get_zeros())));
         });
+
+        egui::containers::Window::new("third")
+            .default_pos((100.0,30.0))
+            .show(ctx, |ui| {
+                response_plot(ui);
+            });
     }
+}
+
+fn response_plot(ui: &mut egui::Ui) {
+    let mut state_space = system::StateSpace::new(vec![2.0], vec![1.0, 3.0, 2.0]);
+
+    let mut output: Vec<f64> = Vec::with_capacity(1000);
+    let time = (0..1000).map(|x| x as f64/100.0).collect::<Vec<f64>>();
+
+    output.push(0.0);
+    let k = 8.0;
+
+    for _ in 0..1000 {
+        output.push(state_space.step(0.01, 1.0 - k * output.iter().last().unwrap()));//, 1.0- k * output.iter().last().unwrap()));
+    }
+
+    let plot_line: egui::plot::PlotPoints = time.into_iter().zip(output.into_iter()).map(|(t,y)| [t,y]).collect();
+
+    egui::plot::Plot::new("response")
+        .show(ui, |ui| {
+            ui.line(egui::plot::Line::new(plot_line));
+        });
 }
 
 fn pid_config(ui: &mut egui::Ui, pid: &mut PID) {
@@ -84,9 +112,9 @@ fn pid_config(ui: &mut egui::Ui, pid: &mut PID) {
             });
         });
 
-        let k_speed = *pid.get_k()/5.0;
-        let i_speed = *pid.get_ti()/5.0;
-        let d_speed = *pid.get_td()/5.0;
+        let k_speed = *pid.get_k()/20.0;
+        let i_speed = *pid.get_ti()/20.0;
+        let d_speed = *pid.get_td()/20.0;
 
         ui.vertical(|ui| {
             ui.add(
@@ -108,66 +136,48 @@ fn pid_config(ui: &mut egui::Ui, pid: &mut PID) {
                     .clamp_range(0.1..=50.0)
                     .speed(d_speed)
             );
-
         });
     });
 }
 
-fn get_bode_plot(ui: &mut egui::Ui, poles: &Vec<(f64, f64)>, zeros: &Vec<(f64,f64)>, pid: &mut PID) {
+fn get_bode_plot(ui: &mut egui::Ui, model: &Model, pid: &PID, bode_link: &egui::widgets::plot::LinkedAxisGroup) {
     let all_freqs_expo = (0..500).map(|i| (i as f64/100.0) - 3.0).collect::<Vec<f64>>();
     let all_freqs = all_freqs_expo.iter().map(|i| 10f64.powf(*i)).collect::<Vec<f64>>();
 
     let mags = all_freqs.iter().map(|f| {
-        let mut mag = 0f64;
-        for pole in poles.iter().chain(pid.get_poles().iter()) {
-            mag -= 0.5 * (pole.0.powf(2.0) + (pole.1 - f).powf(2.0)).log10();
-            if pole.0 != 0.0 && pole.0 != 0.0 {
-                mag += 0.5 * (pole.0.powf(2.0) + pole.1.powf(2.0)).log10();
-            }
-        }
+        let mut mag = 1f64;
 
-        for zero in zeros.iter().chain(pid.get_zeros().iter()) {
-            mag += 0.5 * (zero.0.powf(2.0) + (zero.1 - f).powf(2.0)).log10();
-            if zero.0 != 0.0 && zero.0 != 0.0 {
-                mag -=  0.5 * (zero.0.powf(2.0) + zero.1.powf(2.0)).log10();
-            }
-        }
-        mag + pid.get_steady_factor().log10()
+        mag *= model.get_mag_at_freq(*f);
+        mag *= pid.get_mag_at_freq(*f);
+
+        mag.log10()
+
     }).collect::<Vec<f64>>();
     
     let phases = all_freqs.iter().map(|f| {
-        let mut phase = 0f64;
-        for pole in poles.iter() .chain(pid.get_poles().iter()) {
-            let delta_phase = (f - pole.1).atan2(0.0 - pole.0);
-            /*
-            if delta_phase < 0.0 {
-                delta_phase = 2.0*std::f64::consts::PI + delta_phase;
-            }
-            */
-            phase -= delta_phase;
-        }
-        for zero in zeros.iter().chain(pid.get_zeros().iter()) {
-            let delta_phase = (f - zero.1).atan2(0.0 - zero.0);
-            /*
-            if delta_phase < 0.0 {
-                delta_phase = 2.0*std::f64::consts::PI + delta_phase;
-            }
-            */
-            phase += delta_phase;
-        }
+        let mut phase = 0.0;
+
+        phase += model.get_phase_at_freq(*f);
+        phase += pid.get_phase_at_freq(*f);
+
         phase
+
     }).collect::<Vec<f64>>();
 
     let mag_line: egui::plot::PlotPoints = (0..500).map(|i| [all_freqs_expo[i], mags[i]]).collect();
     let phase_line: egui::plot::PlotPoints  = (0..500).map(|i| [all_freqs_expo[i], phases[i]]).collect();
 
-    let nyquist_line: egui::plot::PlotPoints = (0..500).map(|i| [10f64.powf(mags[i])*phases[i].cos(), 10f64.powf(mags[i])*phases[i].sin()]).collect();
+    let nyquist_line: egui::plot::PlotPoints =
+        (0..500).map(|i| [10f64.powf(mags[i])*phases[i].cos(), 10f64.powf(mags[i])*phases[i].sin()])
+        .collect();
+
 
     ui.vertical(|ui| {
         // ui.add(egui::widgets::Label::new(format!("{:?}", mags)));
         egui::plot::Plot::new("bode_mag")
             .view_aspect(2.0)
             .center_y_axis(false)
+            .link_axis(bode_link.clone())
             .show(ui,
             |ui| {
                 ui.line(egui::plot::Line::new(mag_line));
@@ -175,6 +185,7 @@ fn get_bode_plot(ui: &mut egui::Ui, poles: &Vec<(f64, f64)>, zeros: &Vec<(f64,f6
         egui::plot::Plot::new("bode_phase")
             .view_aspect(2.0)
             .center_y_axis(false)
+            .link_axis(bode_link.clone())
             .show(ui,
             |ui| {
                 ui.line(egui::plot::Line::new(phase_line));
@@ -194,12 +205,16 @@ fn get_bode_plot(ui: &mut egui::Ui, poles: &Vec<(f64, f64)>, zeros: &Vec<(f64,f6
 fn get_pz_map(
         ui: &mut egui::Ui,
         pointer_mode: &mut PointerMode,
-        poles: &mut Vec<(f64, f64)>,
-        zeros: &mut Vec<(f64, f64)>,
+        model: &mut Model,
         pid: &mut PID) {
 
-    let pole_plot_points: egui::plot::PlotPoints = poles.iter().chain(pid.get_poles().iter()).map(|(x,y)| [*x, *y]).collect();
-    let zero_plot_points: egui::plot::PlotPoints = zeros.iter().chain(pid.get_zeros().iter()).map(|(x,y)| [*x, *y]).collect();
+    let pole_plot_points: egui::plot::PlotPoints = 
+        model.get_poles().iter().chain(pid.get_poles().iter())
+        .map(|x| x.to_cartesian()).collect();
+
+    let zero_plot_points: egui::plot::PlotPoints = 
+        model.get_zeros().iter().chain(pid.get_zeros().iter())
+        .map(|x| x.to_cartesian()).collect();
 
     let pole_points = egui::plot::Points::new(pole_plot_points)
         .shape(egui::plot::MarkerShape::Cross)
@@ -224,41 +239,11 @@ fn get_pz_map(
 
         if ui.plot_clicked() {
             if let Some(coord) = ui.pointer_coordinate() {
-                match pointer_mode {
-                    PointerMode::AddPole => poles.push((coord.x, coord.y)),
-                    PointerMode::AddZero => zeros.push((coord.x, coord.y)),
-                    PointerMode::Remove => {
-                        let closest_pole = poles.iter()
-                            .map(|(x,y)| (x - coord.x).powf(2.0) + (y - coord.y).powf(2.0))
-                            .enumerate().reduce(|(i_min, dist_min), (i_new, dist_new)| {
-                                if let Some(std::cmp::Ordering::Less) = dist_new.partial_cmp(&dist_min) {
-                                    (i_new, dist_new)
-                                } else {
-                                    (i_min, dist_min)
-                                }
-                            });
-                        let closest_zero = zeros.iter()
-                            .map(|(x,y)| (x - coord.x).powf(2.0) + (y - coord.y).powf(2.0))
-                            .enumerate().reduce(|(i_min, dist_min), (i_new, dist_new)| {
-                                if let Some(std::cmp::Ordering::Less) = dist_new.partial_cmp(&dist_min) {
-                                    (i_new, dist_new)
-                                } else {
-                                    (i_min, dist_min)
-                                }
-                            });
-
-                        if closest_zero.is_none() && closest_pole.is_none() { };
-                        if closest_zero.is_none() && closest_pole.is_some() { poles.remove(closest_pole.unwrap().0); };
-                        if closest_zero.is_some() && closest_pole.is_none() { zeros.remove(closest_zero.unwrap().0); };
-                        if closest_zero.is_some() && closest_pole.is_some() {
-                            if closest_pole.unwrap().1 < closest_zero.unwrap().1 {
-                                poles.remove(closest_pole.unwrap().0) ;
-                            } else {
-                                zeros.remove(closest_zero.unwrap().0);
-                            }
-                        };
-                    },
-                    _ => {}
+                match &pointer_mode {
+                    PointerMode::AddPole => model.push_pole((coord.x, coord.y)),
+                    PointerMode::AddZero => model.push_zero((coord.x, coord.y)),
+                    PointerMode::Remove => model.remove_closest_element((coord.x,coord.y)),
+                    PointerMode::Move => {}
                 }
             }
         }

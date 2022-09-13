@@ -2,26 +2,34 @@
 
 use std::ops;
 
-#[derive(Default,Clone,Copy)]
-struct ComplexNumber {
+#[derive(Default,Clone,Copy, Debug)]
+pub struct ComplexNumber {
     real: f64,
     imag: f64
 }
 
 impl ComplexNumber {
-    fn from_cartesian(x: f64, y: f64) -> Self {
+    pub fn from_cartesian(x: f64, y: f64) -> Self {
         ComplexNumber { real: x, imag: y }
     }
 
-    fn from_mag_phase(mag: f64, phase: f64) -> Self {
+    pub fn from_mag_phase(mag: f64, phase: f64) -> Self {
         ComplexNumber { real: mag * phase.sin(), imag: mag * phase.cos() }
     }
 
-    fn get_mag(&self) -> f64 {
+    pub fn get_mag(&self) -> f64 {
         (self.real.powf(2.0) + self.imag.powf(2.0)).powf(0.5)
     }
-    fn get_phase(&self) -> f64 {
+    pub fn get_phase(&self) -> f64 {
         self.imag.atan2(self.real)
+    }
+
+    pub fn to_cartesian(&self) -> [f64;2] {
+        [self.real, self.imag]
+    }
+
+    pub fn is_origin(&self) -> bool {
+        self.real == 0.0 && self.imag == 0.0
     }
 }
 
