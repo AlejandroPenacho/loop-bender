@@ -31,6 +31,12 @@ impl ComplexNumber {
     pub fn is_origin(&self) -> bool {
         self.real == 0.0 && self.imag == 0.0
     }
+
+    pub fn conjugate(&self) -> ComplexNumber {
+        let mut out = self.clone();
+        out.imag *= -1.0;
+        out
+    }
 }
 
 impl ops::Add for ComplexNumber {

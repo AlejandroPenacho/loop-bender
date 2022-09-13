@@ -57,6 +57,14 @@ impl DynamicalSystem for Vec<Box<dyn DynamicalSystem>> {
     }
 }
 
+#[derive(Debug,Clone)]
+enum PZElement {
+    Pole(ComplexNumber),
+    DoublePole(ComplexNumber),
+    Zero(ComplexNumber),
+    DoubleZero(ComplexNumber)
+}
+
 pub struct PID {
     k: f64,
     t_i: f64,
@@ -114,62 +122,83 @@ impl Default for PID {
 
 #[derive(Default)]
 pub struct Model {
-    poles: Vec<ComplexNumber>,
-    zeros: Vec<ComplexNumber>
+    components: Vec<PZElement>
 }
 
 impl Model {
     pub fn push_pole(&mut self, coord: (f64, f64)) {
-        self.poles.push(ComplexNumber::from_cartesian(coord.0, coord.1));
+        if coord.1.abs() < coord.0.abs()/10.0 {
+            self.components.push(PZElement::Pole(ComplexNumber::from_cartesian(coord.0, 0.0)));
+        } else {
+            self.components.push(PZElement::DoublePole(ComplexNumber::from_cartesian(coord.0, coord.1)));
+        }
     }
+
     pub fn push_zero(&mut self, coord: (f64, f64)) {
-        self.zeros.push(ComplexNumber::from_cartesian(coord.0, coord.1));
+        if coord.1.abs() < coord.0.abs()/10.0 {
+            self.components.push(PZElement::Zero(ComplexNumber::from_cartesian(coord.0, 0.0)));
+        } else {
+            self.components.push(PZElement::DoubleZero(ComplexNumber::from_cartesian(coord.0, coord.1)));
+        }
     }
     pub fn remove_closest_element(&mut self, coord: (f64, f64)) {
         let x = coord.0;
         let y = coord.1;
-        let closest_pole = self.poles.iter()
-            .map(|p| (x - p.to_cartesian()[0]).powf(2.0) + (y - p.to_cartesian()[1]).powf(2.0))
-            .enumerate()
-            .reduce(|(i_min, dist_min), (i_new, dist_new)| {
-                if let Some(std::cmp::Ordering::Less) = dist_new.partial_cmp(&dist_min) {
-                    (i_new, dist_new)
-                } else {
-                    (i_min, dist_min)
+
+        let closest_element = self.components.iter().map(|element| {
+            let distance = match element {
+                PZElement::Zero(point) | PZElement::Pole(point) => {
+                    let [p_x, p_y] = point.to_cartesian();
+                    (p_x-x).powf(2.0) + (p_y-y).powf(2.0)
+                },
+                PZElement::DoubleZero(point) | PZElement::DoublePole(point) => {
+                    let [p_x, p_y] = point.to_cartesian();
+                    (p_x-x).powf(2.0) + (p_y-y).powf(2.0).min((p_y+y).powf(2.0))
+
                 }
-            });
-        
-        let closest_zero = self.zeros.iter()
-            .map(|p| (x - p.to_cartesian()[0]).powf(2.0) + (y - p.to_cartesian()[1]).powf(2.0))
-            .enumerate()
-            .reduce(|(i_min, dist_min), (i_new, dist_new)| {
-                if let Some(std::cmp::Ordering::Less) = dist_new.partial_cmp(&dist_min) {
-                    (i_new, dist_new)
-                } else {
-                    (i_min, dist_min)
-                }
-            });
-
-        if closest_zero.is_none() && closest_pole.is_none() { };
-
-        if closest_zero.is_none() && closest_pole.is_some() { self.poles.remove(closest_pole.unwrap().0); };
-
-        if closest_zero.is_some() && closest_pole.is_none() { self.zeros.remove(closest_zero.unwrap().0); };
-
-        if closest_zero.is_some() && closest_pole.is_some() {
-            if closest_pole.unwrap().1 < closest_zero.unwrap().1 {
-                self.poles.remove(closest_pole.unwrap().0) ;
+            };
+            distance
+        }).enumerate().reduce(|(i_min, dist_min), (i_new, dist_new)| {
+            if let Some(std::cmp::Ordering::Less) = dist_new.partial_cmp(&dist_min) {
+                (i_new, dist_new)
             } else {
-                self.zeros.remove(closest_zero.unwrap().0);
+                (i_min, dist_min)
             }
-        };
+        }).map(|x| x.0);
+
+        if let Some(index) = closest_element {
+            self.components.remove(index);
+        }
     }
 }
 
 impl DynamicalSystem for Model {
     fn get_steady_factor(&self) -> f64 { 1.0 }
-    fn get_poles(&self) -> Vec<ComplexNumber> { self.poles.clone() }
-    fn get_zeros(&self) -> Vec<ComplexNumber> { self.zeros.clone() }
+
+    fn get_poles(&self) -> Vec<ComplexNumber> {
+        self.components.iter().filter_map(|x| {
+            match x {
+                PZElement::Pole(p) => Some(vec![*p].into_iter()),
+                PZElement::DoublePole(p) => {
+                    let conjugate_pole = p.conjugate();
+                    Some(vec![*p, conjugate_pole].into_iter())
+                },
+                _ => None
+            }
+        }).flatten().collect()
+    }
+    fn get_zeros(&self) -> Vec<ComplexNumber> {
+        self.components.iter().filter_map(|x| {
+            match x {
+                PZElement::Zero(z) => Some(vec![*z].into_iter()),
+                PZElement::DoubleZero(z) => {
+                    let conjugate_zero = z.conjugate();
+                    Some(vec![*z, conjugate_zero].into_iter())
+                },
+                _ => None
+            }
+        }).flatten().collect()
+    }
 }
 
 /// Represents a set of differential equations that allow the simulation of a

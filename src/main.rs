@@ -2,7 +2,6 @@ mod complex;
 mod system;
 
 use system::{PID, Model, DynamicalSystem};
-use complex::ComplexNumber;
 
 use egui::widgets::Widget;
 
@@ -49,7 +48,7 @@ impl MyApp {
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::containers::Window::new("first")
+        egui::containers::Window::new("Diagrams")
             .default_pos((0.0,0.0))
             .show(ctx, |ui| {
 
@@ -57,16 +56,16 @@ impl eframe::App for MyApp {
             get_bode_plot(ui, &self.model, &self.pid, &self.bode_link);
         });
 
-        egui::containers::Window::new("second")
+        egui::containers::Window::new("Tuner")
             .default_pos((100.0,0.0))
             .show(ctx, |ui| {
 
             get_pz_map(ui, &mut self.pointer_mode, &mut self.model, &mut self.pid);
-            ui.add(egui::widgets::Label::new(format!("Poles: {:?}", self.model.get_poles())));
-            ui.add(egui::widgets::Label::new(format!("Zeros: {:?}", self.model.get_zeros())));
+            // ui.add(egui::widgets::Label::new(format!("Poles: {:?}", self.model.get_poles())));
+            // ui.add(egui::widgets::Label::new(format!("Zeros: {:?}", self.model.get_zeros())));
         });
 
-        egui::containers::Window::new("third")
+        egui::containers::Window::new("Response")
             .default_pos((100.0,30.0))
             .show(ctx, |ui| {
                 response_plot(ui);
