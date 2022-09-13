@@ -68,22 +68,23 @@ impl eframe::App for MyApp {
         egui::containers::Window::new("Response")
             .default_pos((100.0,30.0))
             .show(ctx, |ui| {
-                response_plot(ui);
+                response_plot(ui, &self.model, &self.pid);
             });
     }
 }
 
-fn response_plot(ui: &mut egui::Ui) {
-    let mut state_space = system::StateSpace::new(vec![2.0], vec![1.0, 3.0, 2.0]);
+fn response_plot(ui: &mut egui::Ui, model: &Model, pid: &PID) {
+    let mut state_space = model.get_state_space();
 
-    let mut output: Vec<f64> = Vec::with_capacity(1000);
-    let time = (0..1000).map(|x| x as f64/100.0).collect::<Vec<f64>>();
+    let mut output: Vec<f64> = Vec::with_capacity(5000);
+    let time = (0..5000).map(|x| x as f64/100.0).collect::<Vec<f64>>();
 
     output.push(0.0);
-    let k = 8.0;
+    let k = pid.borrow_k();
 
     for _ in 0..1000 {
         output.push(state_space.step(0.01, 1.0 - k * output.iter().last().unwrap()));//, 1.0- k * output.iter().last().unwrap()));
+        // output.push(state_space.step(0.01, 1.0));//, 1.0- k * output.iter().last().unwrap()));
     }
 
     let plot_line: egui::plot::PlotPoints = time.into_iter().zip(output.into_iter()).map(|(t,y)| [t,y]).collect();
