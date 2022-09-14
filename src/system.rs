@@ -64,7 +64,7 @@ pub trait DynamicalSystem {
 
         let k = b_vector[0] / a_vector[0];
 
-        a_vector.iter_mut().for_each(|x| *x /= k);
+        a_vector.iter_mut().for_each(|x| *x *= k);
 
         StateSpace {
             n_states: b_vector.len()-1,
