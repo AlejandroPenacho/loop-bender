@@ -62,6 +62,14 @@ impl eframe::App for MyApp {
             // ui.add(egui::widgets::Label::new(format!("Zeros: {:?}", self.model.get_zeros())));
         });
 
+        egui::containers::Window::new("Help")
+            .default_pos((100.0,30.0))
+            .show(ctx, |ui| {
+                ui.add(egui::Label::new(format!("pz: {:?}", self.pid.get_pz_elements())));
+                ui.add(egui::Label::new(format!("a: {:?}", self.pid.get_state_space().a_vector)));
+                ui.add(egui::Label::new(format!("b: {:?}", self.pid.get_state_space().b_vector)));
+            });
+
         egui::containers::Window::new("Response")
             .default_pos((100.0,30.0))
             .show(ctx, |ui| {
@@ -71,17 +79,26 @@ impl eframe::App for MyApp {
 }
 
 fn response_plot(ui: &mut egui::Ui, model: &Model, pid: &PID) {
-    let mut state_space = model.get_state_space();
+    let mut state_space_model = model.get_state_space();
+    let mut state_space_pid = pid.get_state_space();
 
     let mut output: Vec<f64> = Vec::with_capacity(5000);
-    let time = (0..5000).map(|x| x as f64/100.0).collect::<Vec<f64>>();
+    let time = (0..5000).map(|x| x as f64/500.0).collect::<Vec<f64>>();
 
     output.push(0.0);
-    let k = pid.borrow_k();
 
-    for _ in 0..1000 {
-        output.push(state_space.step(0.01, 1.0 - k * output.iter().last().unwrap()));//, 1.0- k * output.iter().last().unwrap()));
-        // output.push(state_space.step(0.01, 1.0));//, 1.0- k * output.iter().last().unwrap()));
+    for i in 0..5000 {
+        /*
+        state_space_pid.step(0.01, i as f64 / 1000.0);
+        output.push(state_space_pid.get_output());
+        */
+
+        let model_output = state_space_model.get_output();
+        let pid_output = state_space_pid.get_output();
+
+        state_space_model.step(0.002, pid_output);
+        state_space_pid.step(0.002, 1.0-model_output);
+        output.push(state_space_model.get_output());
     }
 
     let plot_line: egui::plot::PlotPoints = time.into_iter().zip(output.into_iter()).map(|(t,y)| [t,y]).collect();

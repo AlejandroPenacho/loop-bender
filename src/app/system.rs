@@ -1,37 +1,95 @@
 use super::complex::ComplexNumber;
 
+/// A system with dynamics
 pub trait DynamicalSystem {
     fn get_steady_factor(&self) -> f64;
-    fn get_zeros(&self) -> Vec<ComplexNumber>;
-    fn get_poles(&self) -> Vec<ComplexNumber>;
     fn get_pz_elements(&self) -> Vec<PZElement>;
+
+    fn get_zeros(&self) -> Vec<ComplexNumber> {
+        let mut output = Vec::new();
+        for element in self.get_pz_elements() {
+            match element {
+                PZElement::Zero(z) => output.push(z),
+                PZElement::DoubleZero(z) => {output.push(z); output.push(z.conjugate())},
+                _ => {}
+            }
+        }
+        output
+    }
+
+    fn get_poles(&self) -> Vec<ComplexNumber> {
+        let mut output = Vec::new();
+        for element in self.get_pz_elements() {
+            match element {
+                PZElement::Pole(z) => output.push(z),
+                PZElement::DoublePole(z) => {output.push(z); output.push(z.conjugate())},
+                _ => {}
+            }
+        }
+        output
+    }
 
     fn get_mag_at_freq(&self, freq: f64) -> f64 {
         let complex_freq = ComplexNumber::from_cartesian(0.0, freq);
         let mut magnitude = 1.0;
-        for zero in self.get_zeros() {
-            magnitude *= (complex_freq - zero).get_mag();
-            if !zero.is_origin() {
-                magnitude /= zero.get_mag();
+
+        for element in self.get_pz_elements() {
+            match element {
+                PZElement::Zero(zero) => {
+                    magnitude *= (complex_freq - zero).get_mag();
+                    if !zero.is_origin() {
+                        magnitude /= zero.get_mag();
+                    }
+                },
+                PZElement::Pole(pole) => {
+                    magnitude /= (complex_freq - pole).get_mag();
+                    if !pole.is_origin() {
+                        magnitude *= pole.get_mag();
+                    }
+                },
+                PZElement::DoubleZero(zero) => {
+                    magnitude *= (complex_freq - zero).get_mag();
+                    magnitude *= (complex_freq - zero.conjugate()).get_mag();
+
+                    if !zero.is_origin() {
+                        magnitude /= zero.get_mag().powf(2.0);
+                    }
+                },
+                PZElement::DoublePole(pole) => {
+                    magnitude /= (complex_freq - pole).get_mag();
+                    magnitude /= (complex_freq - pole.conjugate()).get_mag();
+
+                    if !pole.is_origin() {
+                        magnitude *= pole.get_mag().powf(2.0);
+                    }
+                }
             }
         }
-        for pole in self.get_poles() {
-            magnitude /= (complex_freq - pole).get_mag();
-            if !pole.is_origin() {
-                magnitude *= pole.get_mag();
-            }
-        }
+
         magnitude * self.get_steady_factor()
     }
 
     fn get_phase_at_freq(&self, freq: f64) -> f64 {
         let complex_freq = ComplexNumber::from_cartesian(0.0, freq);
         let mut phase = 0.0;
-        for zero in self.get_zeros() {
-            phase += (complex_freq - zero).get_phase();
-        }
-        for pole in self.get_poles() {
-            phase -= (complex_freq - pole).get_phase();
+
+        for element in self.get_pz_elements() {
+            match element {
+                PZElement::Zero(zero) => {
+                    phase += (complex_freq - zero).get_phase();
+                },
+                PZElement::Pole(pole) => {
+                    phase -= (complex_freq - pole).get_phase();
+                },
+                PZElement::DoubleZero(zero) => {
+                    phase += (complex_freq - zero).get_phase();
+                    phase += (complex_freq - zero.conjugate()).get_phase();
+                },
+                PZElement::DoublePole(pole) => {
+                    phase -= (complex_freq - pole).get_phase();
+                    phase -= (complex_freq - pole.conjugate()).get_phase();
+                }
+            }
         }
         phase
     }
@@ -62,12 +120,14 @@ pub trait DynamicalSystem {
             }
         }
 
-        let k = b_vector[0] / a_vector[0];
+        let polynomical_gain = a_vector.iter().find(|&&x| x > 0.00001).unwrap() / 
+                                b_vector.iter().find(|&&x| x > 0.00001).unwrap();
 
-        a_vector.iter_mut().for_each(|x| *x *= k);
+        a_vector.iter_mut().for_each(|x| *x *= self.get_steady_factor() / polynomical_gain);
 
         StateSpace {
             n_states: b_vector.len()-1,
+            last_input: 0.0,
             state_values: vec![0.0; b_vector.len()-1],
             a_vector,
             b_vector
@@ -85,15 +145,9 @@ fn polynomial_product(p_1: &[f64], p_2: &[f64]) -> Vec<f64> {
     product
 }
 
-impl DynamicalSystem for Vec<Box<dyn DynamicalSystem>> {
+impl<T: DynamicalSystem> DynamicalSystem for Vec<T> {
     fn get_steady_factor(&self) -> f64 {
         self.iter().map(|x| x.get_steady_factor()).product::<f64>()
-    }
-    fn get_zeros(&self) -> Vec<ComplexNumber> {
-        self.iter().map(|x| x.get_zeros()).flatten().collect()
-    }
-    fn get_poles(&self) -> Vec<ComplexNumber> {
-        self.iter().map(|x| x.get_poles()).flatten().collect()
     }
     fn get_pz_elements(&self) -> Vec<PZElement> {
         self.iter().map(|x| x.get_pz_elements()).flatten().collect()
@@ -112,6 +166,7 @@ pub struct PID {
     k: f64,
     t_i: f64,
     t_d: f64,
+    tau: f64,
     integral_on: bool,
     derivative_on: bool
 }
@@ -123,12 +178,12 @@ impl PID {
     pub fn get_td(&mut self) -> &mut f64 { &mut self.t_d }
     pub fn get_integral_on(&mut self) -> &mut bool { &mut self.integral_on }
     pub fn get_derivative_on(&mut self) -> &mut bool { &mut self.derivative_on }
-
 }
 
 impl DynamicalSystem for PID {
     fn get_steady_factor(&self) -> f64 { self.k }
 
+    /*
     fn get_zeros(&self) -> Vec<ComplexNumber> {
         if !self.integral_on && !self.derivative_on {
             vec![]
@@ -157,22 +212,33 @@ impl DynamicalSystem for PID {
     fn get_poles(&self) -> Vec<ComplexNumber> {
         if self.integral_on { vec![ComplexNumber::from_cartesian(0.0,0.0)] } else { vec![] }
     }
+    */
 
     fn get_pz_elements(&self) -> Vec<PZElement> {
         let mut output = Vec::new();
         if self.integral_on {
             output.push(PZElement::Pole(ComplexNumber::from_cartesian(0.0,0.0)));
         } 
+        if self.derivative_on {
+            output.push(PZElement::Pole(ComplexNumber::from_cartesian(-1.0/self.tau,0.0)));
+        } 
 
         if self.integral_on && !self.derivative_on {
             output.push(PZElement::Zero(ComplexNumber::from_cartesian(-1.0/self.t_i, 0.0)));
 
         } else if !self.integral_on && self.derivative_on {
-            output.push(PZElement::Zero(ComplexNumber::from_cartesian(-1.0/self.t_d, 0.0)));
+            output.push(PZElement::Zero(ComplexNumber::from_cartesian(-1.0/(self.t_d+self.tau), 0.0)));
 
         } else if self.integral_on && self.derivative_on {
-            let midpoint = -1.0/(2.0*self.t_d);
-            let delta = 1.0/(4.0*self.t_d.powf(2.0)) - 1.0/(self.t_d * self.t_i);
+            let midpoint = -((self.t_i + self.tau)
+                             /
+                             (2.0*self.t_i*(self.t_d+self.tau).powf(2.0)));
+
+            let delta = ((self.t_i + self.tau).powf(2.0)
+                             /
+                             (4.0*self.t_i.powf(2.0)*(self.t_d+self.tau).powf(2.0)))
+                            -
+                            1.0/(self.t_i*(self.t_d+self.tau));
 
             if delta >= 0.0 {
                 output.push(PZElement::Zero(ComplexNumber::from_cartesian(midpoint + delta.powf(0.5), 0.0)));
@@ -189,13 +255,22 @@ impl DynamicalSystem for PID {
 
 impl Default for PID {
     fn default() -> Self {
-        PID { k: 1.0, t_i: 20.0, t_d: 0.0, integral_on: false, derivative_on: false }
+        PID { k: 1.0, t_i: 20.0, t_d: 1.0, tau: 0.05, integral_on: false, derivative_on: false }
     }
 }
 
-#[derive(Default)]
 pub struct Model {
     components: Vec<PZElement>
+}
+
+impl Default for Model {
+    fn default() -> Model {
+        let components = vec![
+            PZElement::Pole(ComplexNumber::from_cartesian(-2.0, 0.0)),
+            PZElement::Pole(ComplexNumber::from_cartesian(-3.0, 0.0))
+        ];
+        Model { components }
+    }
 }
 
 impl Model {
@@ -248,30 +323,6 @@ impl Model {
 impl DynamicalSystem for Model {
     fn get_steady_factor(&self) -> f64 { 1.0 }
 
-    fn get_poles(&self) -> Vec<ComplexNumber> {
-        self.components.iter().filter_map(|x| {
-            match x {
-                PZElement::Pole(p) => Some(vec![*p].into_iter()),
-                PZElement::DoublePole(p) => {
-                    let conjugate_pole = p.conjugate();
-                    Some(vec![*p, conjugate_pole].into_iter())
-                },
-                _ => None
-            }
-        }).flatten().collect()
-    }
-    fn get_zeros(&self) -> Vec<ComplexNumber> {
-        self.components.iter().filter_map(|x| {
-            match x {
-                PZElement::Zero(z) => Some(vec![*z].into_iter()),
-                PZElement::DoubleZero(z) => {
-                    let conjugate_zero = z.conjugate();
-                    Some(vec![*z, conjugate_zero].into_iter())
-                },
-                _ => None
-            }
-        }).flatten().collect()
-    }
     fn get_pz_elements(&self) -> Vec<PZElement> {
         self.components.clone()
     }
@@ -284,9 +335,10 @@ impl DynamicalSystem for Model {
 /// (a_3 * s^3) + ... ] / [ b_0 + (b_1 * s) + (b_2 * s^2) + (b_3 * s^3) + ... ]
 pub struct StateSpace {
     n_states: usize,
+    last_input: f64,
     state_values: Vec<f64>,
-    a_vector: Vec<f64>,
-    b_vector: Vec<f64>
+    pub a_vector: Vec<f64>,
+    pub b_vector: Vec<f64>
 }
 
 impl StateSpace {
@@ -295,13 +347,39 @@ impl StateSpace {
 
         StateSpace {
             n_states: b_vector.len()-1,
+            last_input: 0.0,
             state_values: vec![0.0; b_vector.len()-1],
             a_vector,
             b_vector
         }
     }
 
-    pub fn step(&mut self, timestep: f64, u: f64) -> f64 {
+    pub fn get_output(&self) -> f64 {
+        let b_n = self.b_vector.iter().last().unwrap();
+        let a_n = self.a_vector.get(self.b_vector.len()-1).unwrap_or(&0.0);
+
+
+        if self.n_states == 0 {
+            return self.last_input * a_n / b_n
+        }
+
+        let direct_response = (a_n / b_n) * self.last_input;
+
+
+        let mut state_contribution = vec![0.0; self.b_vector.len()-1];
+        for i in 0..self.b_vector.len()-1 {
+            state_contribution[i] = (self.a_vector.get(i).unwrap_or(&0.0) - (a_n/b_n)*self.b_vector[i]) * self.state_values[i];
+        }
+
+        direct_response + state_contribution.iter().sum::<f64>()
+    }
+
+    pub fn step(&mut self, timestep: f64, u: f64) {
+        self.last_input = u;
+        if self.n_states == 0 {
+            return
+        }
+
         let mut new_state_values = self.state_values.clone();
 
         let b_n = self.b_vector.iter().last().unwrap();
@@ -317,8 +395,6 @@ impl StateSpace {
 
         if let Some(value) = new_state_values.iter_mut().last() {
             *value += last_state_derivative * timestep
-        } else {
-            return u * a_n / b_n
         }
 
         for i in (0..(self.n_states-1)).rev() {
@@ -326,26 +402,14 @@ impl StateSpace {
         }
 
         self.state_values = new_state_values;
-        
-        // self.state_values[0]
-
-        let direct_response = (a_n / b_n) * u;
-
-        let mut state_contribution = vec![0.0; self.b_vector.len()-1];
-        for i in 0..self.b_vector.len()-1 {
-            state_contribution[i] = (self.a_vector.get(i).unwrap_or(&0.0) - (a_n/b_n)*self.b_vector[i]) * self.state_values[i];
-        }
-
-        /*
-        println!("State: {:?}", self.state_values);
-        println!("Direct: {}", direct_response);
-        println!("State contribution: {:?}", state_contribution);
-        */
-
-        return direct_response + state_contribution.iter().sum::<f64>()
     }
 }
 
+
+pub struct BlockDiagram {
+    blocks: Vec<StateSpace>,
+    feedback: bool
+}
 
 #[cfg(test)]
 mod test {
