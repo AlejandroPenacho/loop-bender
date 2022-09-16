@@ -10,7 +10,7 @@ By showing instantly the effect of the tuning, an intuitive feeling can be gaine
 
 WORK IN PROGRESS
 
-## Objecitves:
+## Objectves:
 
   - [X] Bode plot
   - [ ] Gain and phase margin
