@@ -5,12 +5,17 @@ use system::{PID, Model, DynamicalSystem};
 
 use egui::widgets::Widget;
 
+#[derive(Default)]
+struct StabilityMargins {
+    gain_margin: Option<f64>,
+    phase_margin: Option<f64>
+}
 
 pub struct MyApp {
     model: Model,
     pointer_mode: PointerMode,
     pid: PID,
-    bode_link: egui::widgets::plot::LinkedAxisGroup
+    bode_link: egui::widgets::plot::LinkedAxisGroup,
 }
 
 #[derive(PartialEq,Eq)]
@@ -38,23 +43,28 @@ impl MyApp {
             model: Model::default(),
             pointer_mode: PointerMode::AddPole,
             pid: PID::default(),
-            bode_link: egui::widgets::plot::LinkedAxisGroup::new(true, false)
+            bode_link: egui::widgets::plot::LinkedAxisGroup::new(true, false),
         }
     }
 }
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let (max_x, max_y) = {
+            let available_rectangle = ctx.available_rect();
+            (available_rectangle.max.x, available_rectangle.max.y)
+        };
+
         egui::containers::Window::new("Diagrams")
             .default_pos((0.0,0.0))
+            .default_size((400.0,200.0))
             .show(ctx, |ui| {
 
-            ui.heading("Heyyy");
             get_bode_plot(ui, &self.model, &self.pid, &self.bode_link);
         });
 
         egui::containers::Window::new("Tuner")
-            .default_pos((100.0,0.0))
+            .default_pos((max_x,0.0))
             .show(ctx, |ui| {
 
             get_pz_map(ui, &mut self.pointer_mode, &mut self.model, &mut self.pid);
@@ -63,7 +73,7 @@ impl eframe::App for MyApp {
         });
 
         egui::containers::Window::new("PID transfer function")
-            .default_pos((100.0,30.0))
+            .default_pos((max_x/2.0, max_y))
             .show(ctx, |ui| {
                 ui.add(egui::Label::new(format!("pz: {:?}", self.pid.get_pz_elements())));
                 ui.add(egui::Label::new(format!("a: {:?}", self.pid.get_state_space().a_vector)));
@@ -71,7 +81,7 @@ impl eframe::App for MyApp {
             });
 
         egui::containers::Window::new("Response")
-            .default_pos((100.0,30.0))
+            .default_pos((max_x, max_y))
             .show(ctx, |ui| {
                 response_plot(ui, &self.model, &self.pid);
             });
@@ -158,24 +168,39 @@ fn get_bode_plot(ui: &mut egui::Ui, model: &Model, pid: &PID, bode_link: &egui::
     let all_freqs_expo = (0..500).map(|i| (i as f64/100.0) - 3.0).collect::<Vec<f64>>();
     let all_freqs = all_freqs_expo.iter().map(|i| 10f64.powf(*i)).collect::<Vec<f64>>();
 
+    let mut phase_cross_point = None;
+    let mut gain_cross_point = None;
+    let mut prev_mag = None;
+
     let mags = all_freqs.iter().map(|f| {
         let mut mag = 1f64;
 
         mag *= model.get_mag_at_freq(*f);
         mag *= pid.get_mag_at_freq(*f);
 
-        mag.log10()
+        let log_mag = mag.log10();
 
+        if prev_mag.map_or(false, |prev| prev > 0.0 && log_mag <= 0.0 ) && gain_cross_point.is_none() {
+            gain_cross_point = Some(f.log10());
+        }
+        prev_mag = Some(log_mag);
+
+        log_mag
     }).collect::<Vec<f64>>();
     
+    let mut prev_phase = None;
     let phases = all_freqs.iter().map(|f| {
         let mut phase = 0.0;
 
         phase += model.get_phase_at_freq(*f);
         phase += pid.get_phase_at_freq(*f);
 
-        phase
+        if prev_phase.map_or(false, |prev| prev >= -std::f64::consts::PI && phase < -std::f64::consts::PI) && phase_cross_point.is_none() {
+            phase_cross_point = Some(f.log10());
+        }
+        prev_phase = Some(phase);
 
+        phase
     }).collect::<Vec<f64>>();
 
     let mag_line: egui::plot::PlotPoints = (0..500).map(|i| [all_freqs_expo[i], mags[i]]).collect();
@@ -186,33 +211,62 @@ fn get_bode_plot(ui: &mut egui::Ui, model: &Model, pid: &PID, bode_link: &egui::
         .collect();
 
 
-    ui.vertical(|ui| {
-        // ui.add(egui::widgets::Label::new(format!("{:?}", mags)));
-        egui::plot::Plot::new("bode_mag")
-            .view_aspect(2.0)
-            .center_y_axis(false)
-            .link_axis(bode_link.clone())
-            .show(ui,
-            |ui| {
-                ui.line(egui::plot::Line::new(mag_line));
-            });
-        egui::plot::Plot::new("bode_phase")
-            .view_aspect(2.0)
-            .center_y_axis(false)
-            .link_axis(bode_link.clone())
-            .show(ui,
-            |ui| {
-                ui.line(egui::plot::Line::new(phase_line));
-            });
-        egui::plot::Plot::new("nyquist")
-            .view_aspect(1.0)
-            .data_aspect(1.0)
-            .include_x(0.0)
-            .include_y(0.0)
-            .show(ui,
-            |ui| {
-                ui.line(egui::plot::Line::new(nyquist_line));
-            });
+    ui.horizontal(|ui| {
+        ui.vertical(|ui| {
+            ui.add(egui::widgets::Label::new("Magnitude"));
+            egui::plot::Plot::new("bode_mag")
+                .view_aspect(2.0)
+                .center_y_axis(false)
+                .width(ui.available_width()/2.1)
+                .link_axis(bode_link.clone())
+                .x_axis_formatter(|x,_| if x < 3.5 && x > -3.5 {format!("{}", 10f64.powf(x))} else {format!("{:e}", 10f64.powf(x))})
+                .y_axis_formatter(|x,_| format!("{} dB", x*10.0))
+                .show(ui,
+                |ui| {
+                    ui.line(egui::plot::Line::new(mag_line));
+                    if let Some(freq) = gain_cross_point {
+                        ui.vline(egui::plot::VLine::new(freq));
+                    }
+                    if let Some(freq) = phase_cross_point {
+                        ui.vline(egui::plot::VLine::new(freq));
+                    }
+                });
+
+            ui.add(egui::widgets::Label::new("Phase"));
+            egui::plot::Plot::new("bode_phase")
+                .view_aspect(2.0)
+                .center_y_axis(false)
+                .width(ui.available_width()/2.1)
+                .link_axis(bode_link.clone())
+                .x_axis_formatter(|x,_| if x < 3.5 && x > -3.5 {format!("{}", 10f64.powf(x))} else {format!("{:e}", 10f64.powf(x))})
+                .y_grid_spacer(bode_phase_y_spacer)
+                .y_axis_formatter(bode_phase_y_formatter)
+                .show(ui,
+                |ui| {
+                    ui.line(egui::plot::Line::new(phase_line));
+                    if let Some(freq) = gain_cross_point {
+                        ui.vline(egui::plot::VLine::new(freq));
+                    }
+                    if let Some(freq) = phase_cross_point {
+                        ui.vline(egui::plot::VLine::new(freq));
+                    }
+                });
+        });
+
+        ui.vertical(|ui| {
+            ui.add(egui::widgets::Label::new("Nyquist"));
+            egui::plot::Plot::new("nyquist")
+                .view_aspect(1.0)
+                .width(ui.available_width())
+                .data_aspect(1.0)
+                .include_x(0.0)
+                .include_y(0.0)
+                .show(ui,
+                |ui| {
+                    ui.line(egui::plot::Line::new(nyquist_line));
+                }
+            );
+        });
     });
 }
 
@@ -287,4 +341,28 @@ fn get_pz_map(
             *pointer_mode = PointerMode::Remove
         }
     });
+}
+
+fn bode_phase_y_spacer(grid: egui::plot::GridInput) -> Vec<egui::plot::GridMark> {
+    let mut output = Vec::new();
+    for i in -8..8 {
+        output.push(egui::plot::GridMark {
+            value: i as f64/4.0 * std::f64::consts::PI,
+            step_size:  1.0/4.0 * std::f64::consts::PI,
+        });
+    }
+
+    output
+}
+
+fn bode_phase_y_formatter(y: f64, _range: &std::ops::RangeInclusive<f64>) -> String {
+    let quarters = (4.0 * y / std::f64::consts::PI).round() as i32;
+
+    if quarters % 4 == 0 {
+        format!("{} π", quarters/4)
+    } else if quarters % 2 == 0 {
+        format!("{}/2 π", quarters/2)
+    } else {
+        format!("{}/4 π", quarters)
+    }
 }

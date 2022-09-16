@@ -439,7 +439,7 @@ mod test {
             let mut state_space = StateSpace::new(vec![1.0], vec![1.0, 1.0]);
 
             for _ in 0..1000 {
-                println!("{}", state_space.step(0.01, 1.0));
+                state_space.step(0.01, 1.0);
             }
         }
     }
