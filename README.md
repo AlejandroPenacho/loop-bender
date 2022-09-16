@@ -15,5 +15,5 @@ WORK IN PROGRESS
   - [X] Bode plot
   - [ ] Gain and phase margin
   - [X] Nyquist plot
-  - [ ] Step response
+  - [X] Step response
   - [ ] Closed loop
