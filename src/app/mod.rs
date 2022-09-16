@@ -62,7 +62,7 @@ impl eframe::App for MyApp {
             // ui.add(egui::widgets::Label::new(format!("Zeros: {:?}", self.model.get_zeros())));
         });
 
-        egui::containers::Window::new("Help")
+        egui::containers::Window::new("PID transfer function")
             .default_pos((100.0,30.0))
             .show(ctx, |ui| {
                 ui.add(egui::Label::new(format!("pz: {:?}", self.pid.get_pz_elements())));
