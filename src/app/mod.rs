@@ -170,6 +170,8 @@ fn get_bode_plot(ui: &mut egui::Ui, model: &Model, pid: &PID, bode_link: &egui::
 
     let mut phase_cross_point = None;
     let mut gain_cross_point = None;
+
+
     let mut prev_mag = None;
 
     let mags = all_freqs.iter().map(|f| {
@@ -181,7 +183,7 @@ fn get_bode_plot(ui: &mut egui::Ui, model: &Model, pid: &PID, bode_link: &egui::
         let log_mag = mag.log10();
 
         if prev_mag.map_or(false, |prev| prev > 0.0 && log_mag <= 0.0 ) && gain_cross_point.is_none() {
-            gain_cross_point = Some(f.log10());
+            gain_cross_point = Some(f);
         }
         prev_mag = Some(log_mag);
 
@@ -196,12 +198,15 @@ fn get_bode_plot(ui: &mut egui::Ui, model: &Model, pid: &PID, bode_link: &egui::
         phase += pid.get_phase_at_freq(*f);
 
         if prev_phase.map_or(false, |prev| prev >= -std::f64::consts::PI && phase < -std::f64::consts::PI) && phase_cross_point.is_none() {
-            phase_cross_point = Some(f.log10());
+            phase_cross_point = Some(f);
         }
         prev_phase = Some(phase);
 
         phase
     }).collect::<Vec<f64>>();
+
+    let phase_margin = gain_cross_point.map(|x| std::f64::consts::PI + (model.get_phase_at_freq(*x) + pid.get_phase_at_freq(*x)));
+    let gain_margin = phase_cross_point.map(|x| -(model.get_mag_at_freq(*x)*pid.get_mag_at_freq(*x)).log10());
 
     let mag_line: egui::plot::PlotPoints = (0..500).map(|i| [all_freqs_expo[i], mags[i]]).collect();
     let phase_line: egui::plot::PlotPoints  = (0..500).map(|i| [all_freqs_expo[i], phases[i]]).collect();
@@ -210,62 +215,75 @@ fn get_bode_plot(ui: &mut egui::Ui, model: &Model, pid: &PID, bode_link: &egui::
         (0..500).map(|i| [10f64.powf(mags[i])*phases[i].cos(), 10f64.powf(mags[i])*phases[i].sin()])
         .collect();
 
+    let phase_margin_label = match phase_margin {
+        Some(x) => format!("{:.1}", x*180.0/std::f64::consts::PI),
+        None => "∞".to_owned()
+    };
 
-    ui.horizontal(|ui| {
-        ui.vertical(|ui| {
-            ui.add(egui::widgets::Label::new("Magnitude"));
-            egui::plot::Plot::new("bode_mag")
-                .view_aspect(2.0)
-                .center_y_axis(false)
-                .width(ui.available_width()/2.1)
-                .link_axis(bode_link.clone())
-                .x_axis_formatter(|x,_| if x < 3.5 && x > -3.5 {format!("{}", 10f64.powf(x))} else {format!("{:e}", 10f64.powf(x))})
-                .y_axis_formatter(|x,_| format!("{} dB", x*10.0))
-                .show(ui,
-                |ui| {
-                    ui.line(egui::plot::Line::new(mag_line));
-                    if let Some(freq) = gain_cross_point {
-                        ui.vline(egui::plot::VLine::new(freq));
-                    }
-                    if let Some(freq) = phase_cross_point {
-                        ui.vline(egui::plot::VLine::new(freq));
-                    }
-                });
+    let gain_margin_label = match gain_margin {
+        Some(x) => format!("{:.1}", 10.0*x),
+        None => "∞".to_owned()
+    };
 
-            ui.add(egui::widgets::Label::new("Phase"));
-            egui::plot::Plot::new("bode_phase")
-                .view_aspect(2.0)
-                .center_y_axis(false)
-                .width(ui.available_width()/2.1)
-                .link_axis(bode_link.clone())
-                .x_axis_formatter(|x,_| if x < 3.5 && x > -3.5 {format!("{}", 10f64.powf(x))} else {format!("{:e}", 10f64.powf(x))})
-                .y_grid_spacer(bode_phase_y_spacer)
-                .y_axis_formatter(bode_phase_y_formatter)
-                .show(ui,
-                |ui| {
-                    ui.line(egui::plot::Line::new(phase_line));
-                    if let Some(freq) = gain_cross_point {
-                        ui.vline(egui::plot::VLine::new(freq));
-                    }
-                    if let Some(freq) = phase_cross_point {
-                        ui.vline(egui::plot::VLine::new(freq));
-                    }
-                });
-        });
+    ui.vertical(|ui| {
+        ui.add(egui::widgets::Label::new(format!("Gain margin: {} dB", gain_margin_label)));
+        ui.add(egui::widgets::Label::new(format!("Phase margin: {} °", phase_margin_label)));
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                ui.add(egui::widgets::Label::new("Magnitude"));
+                egui::plot::Plot::new("bode_mag")
+                    .view_aspect(2.0)
+                    .center_y_axis(false)
+                    .width(ui.available_width()/2.1)
+                    .link_axis(bode_link.clone())
+                    .x_axis_formatter(|x,_| if x < 3.5 && x > -3.5 {format!("{}", 10f64.powf(x))} else {format!("{:e}", 10f64.powf(x))})
+                    .y_axis_formatter(|x,_| format!("{} dB", x*10.0))
+                    .show(ui,
+                    |ui| {
+                        ui.line(egui::plot::Line::new(mag_line));
+                        if let Some(freq) = gain_cross_point {
+                            ui.vline(egui::plot::VLine::new(freq.log10()));
+                        }
+                        if let Some(freq) = phase_cross_point {
+                            ui.vline(egui::plot::VLine::new(freq.log10()));
+                        }
+                    });
 
-        ui.vertical(|ui| {
-            ui.add(egui::widgets::Label::new("Nyquist"));
-            egui::plot::Plot::new("nyquist")
-                .view_aspect(1.0)
-                .width(ui.available_width())
-                .data_aspect(1.0)
-                .include_x(0.0)
-                .include_y(0.0)
-                .show(ui,
-                |ui| {
-                    ui.line(egui::plot::Line::new(nyquist_line));
-                }
-            );
+                ui.add(egui::widgets::Label::new("Phase"));
+                egui::plot::Plot::new("bode_phase")
+                    .view_aspect(2.0)
+                    .center_y_axis(false)
+                    .width(ui.available_width()/2.1)
+                    .link_axis(bode_link.clone())
+                    .x_axis_formatter(|x,_| if x < 3.5 && x > -3.5 {format!("{}", 10f64.powf(x))} else {format!("{:e}", 10f64.powf(x))})
+                    .y_grid_spacer(bode_phase_y_spacer)
+                    .y_axis_formatter(bode_phase_y_formatter)
+                    .show(ui,
+                    |ui| {
+                        ui.line(egui::plot::Line::new(phase_line));
+                        if let Some(freq) = gain_cross_point {
+                            ui.vline(egui::plot::VLine::new(freq.log10()));
+                        }
+                        if let Some(freq) = phase_cross_point {
+                            ui.vline(egui::plot::VLine::new(freq.log10()));
+                        }
+                    });
+            });
+
+            ui.vertical(|ui| {
+                ui.add(egui::widgets::Label::new("Nyquist"));
+                egui::plot::Plot::new("nyquist")
+                    .view_aspect(1.0)
+                    .width(ui.available_width())
+                    .data_aspect(1.0)
+                    .include_x(0.0)
+                    .include_y(0.0)
+                    .show(ui,
+                    |ui| {
+                        ui.line(egui::plot::Line::new(nyquist_line));
+                    }
+                );
+            });
         });
     });
 }
