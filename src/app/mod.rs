@@ -16,7 +16,7 @@ pub struct MyApp {
     model: Model,
     pointer_mode: pz_map::PointerMode,
     controller: Controller,
-    bode_link: egui::widgets::plot::LinkedAxisGroup,
+    diagram_config: diagrams::DiagramsConfiguration
 }
 
 impl MyApp {
@@ -25,7 +25,7 @@ impl MyApp {
             model: Model::default(),
             pointer_mode: pz_map::PointerMode::AddPole,
             controller: Controller::default(),
-            bode_link: egui::widgets::plot::LinkedAxisGroup::new(true, false),
+            diagram_config: diagrams::DiagramsConfiguration::default()
         }
     }
 }
@@ -42,7 +42,7 @@ impl eframe::App for MyApp {
             .default_size((400.0,200.0))
             .show(ctx, |ui| {
 
-            show_bode_plots(ui, &self.model, &self.controller, &self.bode_link);
+            show_bode_plots(ui, &self.model, &self.controller, &mut self.diagram_config);
         });
 
         egui::containers::Window::new("Tuner")
