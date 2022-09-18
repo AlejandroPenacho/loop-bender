@@ -1,5 +1,16 @@
 use super::complex::ComplexNumber;
 
+
+
+#[derive(Debug,Clone)]
+pub enum PZElement {
+    Pole(ComplexNumber),
+    DoublePole(ComplexNumber),
+    Zero(ComplexNumber),
+    DoubleZero(ComplexNumber)
+}
+
+
 /// A system with dynamics
 pub trait DynamicalSystem {
     fn get_steady_factor(&self) -> f64;
@@ -145,7 +156,7 @@ fn polynomial_product(p_1: &[f64], p_2: &[f64]) -> Vec<f64> {
     product
 }
 
-impl<T: DynamicalSystem> DynamicalSystem for Vec<T> {
+impl<T: DynamicalSystem> DynamicalSystem for &[T] {
     fn get_steady_factor(&self) -> f64 {
         self.iter().map(|x| x.get_steady_factor()).product::<f64>()
     }
@@ -154,14 +165,32 @@ impl<T: DynamicalSystem> DynamicalSystem for Vec<T> {
     }
 }
 
-#[derive(Debug,Clone)]
-pub enum PZElement {
-    Pole(ComplexNumber),
-    DoublePole(ComplexNumber),
-    Zero(ComplexNumber),
-    DoubleZero(ComplexNumber)
+
+#[derive(Default)]
+pub struct Controller {
+    pub pid: PID,
+    pub lead_lag: LLController,
+    pub lag_lead: LLController
 }
 
+impl DynamicalSystem for Controller {
+    fn get_steady_factor(&self) -> f64 {
+        self.pid.get_steady_factor()
+        * self.lead_lag.get_steady_factor()
+        * self.lag_lead.get_steady_factor()
+    }
+
+    fn get_pz_elements(&self) -> Vec<PZElement> {
+        let mut output = self.pid.get_pz_elements();
+        output.append(&mut self.lead_lag.get_pz_elements());
+        output.append(&mut self.lag_lead.get_pz_elements());
+
+        output
+    }
+}
+
+
+/// A PID controller
 pub struct PID {
     k: f64,
     t_i: f64,
@@ -259,8 +288,58 @@ impl Default for PID {
     }
 }
 
+pub struct LLController {
+    zero_frequency: f64,
+    pole_frequency: f64,
+    activated: bool
+}
+
+impl Default for LLController {
+    fn default() -> Self {
+        Self {
+            zero_frequency: 1.0,
+            pole_frequency: 1.0,
+            activated: false
+        }
+    }
+}
+
+impl LLController {
+    pub fn is_activated(&mut self) -> &mut bool {
+        &mut self.activated
+    }
+    pub fn get_zero_freq(&mut self) -> &mut f64 {
+        &mut self.zero_frequency
+    }
+    pub fn get_pole_freq(&mut self) -> &mut f64 {
+        &mut self.pole_frequency
+    }
+}
+
+impl DynamicalSystem for LLController {
+    fn get_steady_factor(&self) -> f64 {
+        1.0
+    }
+
+    fn get_pz_elements(&self)-> Vec<PZElement> {
+        if self.activated {
+            vec![
+                PZElement::Zero(ComplexNumber::from_cartesian(-self.zero_frequency, 0.0)),
+                PZElement::Pole(ComplexNumber::from_cartesian(-self.pole_frequency, 0.0))
+            ]
+        } else {
+            vec![]
+        }
+    }
+}
+
+
+
+/// A generic dynamic system, defined by its gain, poles and zeros
+#[derive(Clone)]
 pub struct Model {
-    components: Vec<PZElement>
+    components: Vec<PZElement>,
+    gain: f64
 }
 
 impl Default for Model {
@@ -269,7 +348,7 @@ impl Default for Model {
             PZElement::Pole(ComplexNumber::from_cartesian(-2.0, 0.0)),
             PZElement::Pole(ComplexNumber::from_cartesian(-3.0, 0.0))
         ];
-        Model { components }
+        Model { components, gain: 1.0 }
     }
 }
 
@@ -289,6 +368,7 @@ impl Model {
             self.components.push(PZElement::DoubleZero(ComplexNumber::from_cartesian(coord.0, coord.1)));
         }
     }
+
     pub fn remove_closest_element(&mut self, coord: (f64, f64)) {
         let x = coord.0;
         let y = coord.1;
@@ -318,15 +398,29 @@ impl Model {
             self.components.remove(index);
         }
     }
+
+    pub fn link_system<T: DynamicalSystem>(&self, rhs: &T) -> Model {
+        let mut all_elements = self.get_pz_elements();
+        let mut gain = self.get_steady_factor();
+
+        all_elements.append(&mut rhs.get_pz_elements());
+        gain *= rhs.get_steady_factor();
+
+        Model {
+            gain,
+            components: all_elements
+        }
+    }
 }
 
 impl DynamicalSystem for Model {
-    fn get_steady_factor(&self) -> f64 { 1.0 }
+    fn get_steady_factor(&self) -> f64 { self.gain }
 
     fn get_pz_elements(&self) -> Vec<PZElement> {
         self.components.clone()
     }
 }
+
 
 /// Represents a set of differential equations that allow the simulation of a
 /// dynamic system
