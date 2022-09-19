@@ -504,10 +504,14 @@ impl StateSpace {
         let direct_response = (a_n / b_n) * self.last_input;
 
         let mut state_contribution = vec![0.0; self.b_vector.len() - 1];
-        for (i, b_i) in self.b_vector.iter().enumerate().take(self.b_vector.len() - 1) {
-            state_contribution[i] = (self.a_vector.get(i).unwrap_or(&0.0)
-                - (a_n / b_n) * b_i)
-                * self.state_values[i];
+        for (i, b_i) in self
+            .b_vector
+            .iter()
+            .enumerate()
+            .take(self.b_vector.len() - 1)
+        {
+            state_contribution[i] =
+                (self.a_vector.get(i).unwrap_or(&0.0) - (a_n / b_n) * b_i) * self.state_values[i];
         }
 
         direct_response + state_contribution.iter().sum::<f64>()

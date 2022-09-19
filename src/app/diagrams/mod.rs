@@ -1,5 +1,7 @@
 use crate::app::system::{Controller, DynamicalSystem, Model};
 
+const GAIN_MARGIN_COLOR: egui::color::Color32 = egui::Color32::from_rgb(82, 73, 255);
+
 pub struct DiagramsConfiguration {
     show_gain_margin: bool,
     show_phase_margin: bool,
@@ -65,28 +67,46 @@ pub fn show_bode_plots(
     ui.vertical(|ui| {
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
-                ui.add(egui::widgets::Label::new("Gain margin:"));
-                ui.add(egui::widgets::Label::new("Phase margin:"));
+                ui.horizontal(|ui| {
+                    ui.set_min_height(20.0);
+                    ui.add(egui::widgets::Label::new("Gain margin:"));
+                });
+                ui.horizontal(|ui| {
+                    ui.set_min_height(20.0);
+                    ui.add(egui::widgets::Label::new("Phase margin:"));
+                });
             });
             ui.vertical(|ui| {
-                ui.add(egui::widgets::Label::new(format!(
-                    "{:<6} dB",
-                    gain_margin_label
-                )));
-                ui.add(egui::widgets::Label::new(format!(
-                    "{:<6} °",
-                    phase_margin_label
-                )));
+                ui.horizontal(|ui| {
+                    ui.set_min_height(20.0);
+                    ui.add(egui::widgets::Label::new(format!(
+                        "{:<6} dB",
+                        gain_margin_label
+                    )));
+                });
+                ui.horizontal(|ui| {
+                    ui.set_min_height(20.0);
+                    ui.add(egui::widgets::Label::new(format!(
+                        "{:<6} °",
+                        phase_margin_label
+                    )));
+                });
             });
             ui.vertical(|ui| {
-                ui.add(egui::widgets::Checkbox::new(
-                    &mut config.show_gain_margin,
-                    "Show",
-                ));
-                ui.add(egui::widgets::Checkbox::new(
-                    &mut config.show_phase_margin,
-                    "Show",
-                ));
+                ui.horizontal(|ui| {
+                    ui.set_min_height(20.0);
+                    ui.add(egui::widgets::Checkbox::new(
+                        &mut config.show_gain_margin,
+                        "Show",
+                    ));
+                });
+                ui.horizontal(|ui| {
+                    ui.set_min_height(20.0);
+                    ui.add(egui::widgets::Checkbox::new(
+                        &mut config.show_phase_margin,
+                        "Show",
+                    ));
+                });
             });
         });
         ui.horizontal(|ui| {
@@ -107,9 +127,16 @@ pub fn show_bode_plots(
                     .y_axis_formatter(|x, _| format!("{} dB", x * 10.0))
                     .show(ui, |ui| {
                         ui.line(egui::plot::Line::new(mag_line));
-                        if let Some(freq) = margins.gain_margin {
+                        if let Some(margin) = margins.gain_margin {
                             if config.show_gain_margin {
-                                ui.vline(egui::plot::VLine::new(freq.0.log10()));
+                                let gain_margin_points: egui::plot::PlotPoints = vec![
+                                    [margin.0.log10(), 0.0],
+                                    [margin.0.log10(), -margin.1]
+                                ].into();
+
+                                ui.line(egui::plot::Line::new(gain_margin_points)
+                                        .color(GAIN_MARGIN_COLOR)
+                                );
                             }
                         }
                         if let Some(freq) = margins.phase_margin {
@@ -136,14 +163,21 @@ pub fn show_bode_plots(
                     .y_axis_formatter(bode_phase_y_formatter)
                     .show(ui, |ui| {
                         ui.line(egui::plot::Line::new(phase_line));
-                        if let Some(freq) = margins.gain_margin {
+                        if let Some(margin) = margins.gain_margin {
                             if config.show_gain_margin {
-                                ui.vline(egui::plot::VLine::new(freq.0.log10()));
+                                ui.vline(egui::plot::VLine::new(margin.0.log10())
+                                    .color(GAIN_MARGIN_COLOR)
+                                    .style(egui::plot::LineStyle::Dashed{length: 3.0})
+                                );
+                                ui.hline(egui::plot::HLine::new(-std::f64::consts::PI)
+                                    .color(GAIN_MARGIN_COLOR)
+                                    .style(egui::plot::LineStyle::Dashed{length: 3.0})
+                                );
                             }
                         }
-                        if let Some(freq) = margins.phase_margin {
+                        if let Some(margin) = margins.phase_margin {
                             if config.show_phase_margin {
-                                ui.vline(egui::plot::VLine::new(freq.0.log10()));
+                                ui.vline(egui::plot::VLine::new(margin.0.log10()))
                             }
                         }
                     });
