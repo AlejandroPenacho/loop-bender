@@ -1,6 +1,7 @@
 use crate::app::system::{Controller, DynamicalSystem, Model};
 
 const GAIN_MARGIN_COLOR: egui::color::Color32 = egui::Color32::from_rgb(82, 73, 255);
+const PHASE_MARGIN_COLOR: egui::color::Color32 = egui::Color32::from_rgb(255, 140, 13);
 
 pub struct DiagramsConfiguration {
     show_gain_margin: bool,
@@ -97,15 +98,17 @@ pub fn show_bode_plots(
                     ui.set_min_height(20.0);
                     ui.add(egui::widgets::Checkbox::new(
                         &mut config.show_gain_margin,
-                        "Show",
+                        "",
                     ));
+                    ui.colored_label(GAIN_MARGIN_COLOR, "Show");
                 });
                 ui.horizontal(|ui| {
                     ui.set_min_height(20.0);
                     ui.add(egui::widgets::Checkbox::new(
                         &mut config.show_phase_margin,
-                        "Show",
+                        "",
                     ));
+                    ui.colored_label(PHASE_MARGIN_COLOR, "Show");
                 });
             });
         });
@@ -129,19 +132,23 @@ pub fn show_bode_plots(
                         ui.line(egui::plot::Line::new(mag_line));
                         if let Some(margin) = margins.gain_margin {
                             if config.show_gain_margin {
-                                let gain_margin_points: egui::plot::PlotPoints = vec![
-                                    [margin.0.log10(), 0.0],
-                                    [margin.0.log10(), -margin.1]
-                                ].into();
+                                let gain_margin_points: egui::plot::PlotPoints =
+                                    vec![[margin.0.log10(), 0.0], [margin.0.log10(), -margin.1]]
+                                        .into();
 
-                                ui.line(egui::plot::Line::new(gain_margin_points)
-                                        .color(GAIN_MARGIN_COLOR)
+                                ui.line(
+                                    egui::plot::Line::new(gain_margin_points)
+                                        .color(GAIN_MARGIN_COLOR),
                                 );
                             }
                         }
-                        if let Some(freq) = margins.phase_margin {
+                        if let Some(margin) = margins.phase_margin {
                             if config.show_phase_margin {
-                                ui.vline(egui::plot::VLine::new(freq.0.log10()));
+                                ui.vline(
+                                    egui::plot::VLine::new(margin.0.log10())
+                                        .color(PHASE_MARGIN_COLOR)
+                                        .style(egui::plot::LineStyle::Dashed { length: 3.0 }),
+                                );
                             }
                         }
                     });
@@ -163,21 +170,39 @@ pub fn show_bode_plots(
                     .y_axis_formatter(bode_phase_y_formatter)
                     .show(ui, |ui| {
                         ui.line(egui::plot::Line::new(phase_line));
+
+                        ui.hline(
+                            egui::plot::HLine::new(0.0)
+                                .color(egui::color::Color32::GRAY)
+                                .width(0.5),
+                        );
+                        ui.hline(
+                            egui::plot::HLine::new(-std::f64::consts::PI)
+                                .color(egui::color::Color32::GRAY)
+                                .width(0.5),
+                        );
+
                         if let Some(margin) = margins.gain_margin {
                             if config.show_gain_margin {
-                                ui.vline(egui::plot::VLine::new(margin.0.log10())
-                                    .color(GAIN_MARGIN_COLOR)
-                                    .style(egui::plot::LineStyle::Dashed{length: 3.0})
-                                );
-                                ui.hline(egui::plot::HLine::new(-std::f64::consts::PI)
-                                    .color(GAIN_MARGIN_COLOR)
-                                    .style(egui::plot::LineStyle::Dashed{length: 3.0})
+                                ui.vline(
+                                    egui::plot::VLine::new(margin.0.log10())
+                                        .color(GAIN_MARGIN_COLOR)
+                                        .style(egui::plot::LineStyle::Dashed { length: 3.0 }),
                                 );
                             }
                         }
                         if let Some(margin) = margins.phase_margin {
                             if config.show_phase_margin {
-                                ui.vline(egui::plot::VLine::new(margin.0.log10()))
+                                let phase_margin_points: egui::plot::PlotPoints = vec![
+                                    [margin.0.log10(), -std::f64::consts::PI],
+                                    [margin.0.log10(), -std::f64::consts::PI + margin.1],
+                                ]
+                                .into();
+
+                                ui.line(
+                                    egui::plot::Line::new(phase_margin_points)
+                                        .color(PHASE_MARGIN_COLOR),
+                                )
                             }
                         }
                     });
