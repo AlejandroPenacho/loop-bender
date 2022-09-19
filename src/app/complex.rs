@@ -2,10 +2,10 @@
 
 use std::ops;
 
-#[derive(Default,Clone,Copy, Debug)]
+#[derive(Default, Clone, Copy, Debug)]
 pub struct ComplexNumber {
     real: f64,
-    imag: f64
+    imag: f64,
 }
 
 impl ComplexNumber {
@@ -14,7 +14,10 @@ impl ComplexNumber {
     }
 
     pub fn from_mag_phase(mag: f64, phase: f64) -> Self {
-        ComplexNumber { real: mag * phase.sin(), imag: mag * phase.cos() }
+        ComplexNumber {
+            real: mag * phase.sin(),
+            imag: mag * phase.cos(),
+        }
     }
 
     pub fn get_mag(&self) -> f64 {
@@ -24,7 +27,7 @@ impl ComplexNumber {
         self.imag.atan2(self.real)
     }
 
-    pub fn to_cartesian(&self) -> [f64;2] {
+    pub fn as_cartesian(&self) -> [f64; 2] {
         [self.real, self.imag]
     }
 
@@ -33,7 +36,7 @@ impl ComplexNumber {
     }
 
     pub fn conjugate(&self) -> ComplexNumber {
-        let mut out = self.clone();
+        let mut out = *self;
         out.imag *= -1.0;
         out
     }
@@ -44,7 +47,7 @@ impl ops::Add for ComplexNumber {
     fn add(self, other: Self) -> Self {
         ComplexNumber {
             real: self.real + other.real,
-            imag: self.imag + other.imag
+            imag: self.imag + other.imag,
         }
     }
 }
@@ -54,10 +57,9 @@ impl ops::Sub for ComplexNumber {
     fn sub(self, other: Self) -> Self {
         ComplexNumber {
             real: self.real - other.real,
-            imag: self.imag - other.imag
+            imag: self.imag - other.imag,
         }
     }
-
 }
 
 impl ops::Mul for ComplexNumber {
