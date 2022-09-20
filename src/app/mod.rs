@@ -1,18 +1,18 @@
 mod complex;
 mod diagrams;
+mod help;
 mod pz_map;
 mod response;
 mod system;
 mod tuner;
-mod help;
 
 use diagrams::show_bode_plots;
+use help::show_help;
 use pz_map::show_pz_map;
 use response::show_response_plot;
 use tuner::show_controller_tuner;
-use help::show_help;
 
-use system::{Controller, DynamicalSystem, Model};
+use system::{Controller, Model};
 
 struct OpenWindows {
     diagrams: bool,
@@ -27,7 +27,7 @@ impl Default for OpenWindows {
             diagrams: true,
             pz_and_tuner: true,
             help: true,
-            response: true
+            response: true,
         }
     }
 }
@@ -38,7 +38,7 @@ pub struct MyApp {
     controller: Controller,
     diagram_config: diagrams::DiagramsConfiguration,
     help_config: help::HelpConfig,
-    open_windows: OpenWindows
+    open_windows: OpenWindows,
 }
 
 impl MyApp {
@@ -49,7 +49,7 @@ impl MyApp {
             controller: Controller::default(),
             diagram_config: diagrams::DiagramsConfiguration::default(),
             help_config: help::HelpConfig::default(),
-            open_windows: OpenWindows::default()
+            open_windows: OpenWindows::default(),
         }
     }
 }
@@ -59,18 +59,15 @@ macro_rules! toggable {
         if $ui.selectable_label($variable, $label).clicked() {
             $variable = !$variable
         }
-    }
+    };
 }
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-
-
         let (max_x, max_y) = {
             let available_rectangle = ctx.available_rect();
             (available_rectangle.max.x, available_rectangle.max.y)
         };
-
 
         egui::containers::Window::new("Menu")
             .fixed_pos((max_x - 70.0, 0.0))
@@ -81,9 +78,7 @@ impl eframe::App for MyApp {
                 toggable!(ui, self.open_windows.pz_and_tuner, "Tuner");
                 toggable!(ui, self.open_windows.diagrams, "Diagrams");
                 toggable!(ui, self.open_windows.response, "Response");
-        });
-
-
+            });
 
         if self.open_windows.diagrams {
             egui::containers::Window::new("Diagrams")
@@ -142,7 +137,7 @@ impl eframe::App for MyApp {
 
         if self.open_windows.help {
             egui::containers::Window::new("Help")
-                .default_pos((max_x/2.0, max_y))
+                .default_pos((max_x / 2.0, max_y))
                 .show(ctx, |ui| {
                     show_help(ui, &mut self.help_config);
                 });

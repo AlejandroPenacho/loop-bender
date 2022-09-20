@@ -1,24 +1,24 @@
 use std::fmt;
 
 pub struct HelpConfig {
-    selected_menu: HelpMenu
+    selected_menu: HelpMenu,
 }
 
 impl Default for HelpConfig {
     fn default() -> Self {
         HelpConfig {
-            selected_menu: HelpMenu::Main
+            selected_menu: HelpMenu::Main,
         }
     }
 }
 
-#[derive(PartialEq,Eq)]
+#[derive(PartialEq, Eq)]
 enum HelpMenu {
     Main,
     Diagrams,
     Tuner,
     PzMap,
-    Response
+    Response,
 }
 
 impl fmt::Display for HelpMenu {
@@ -33,21 +33,18 @@ impl fmt::Display for HelpMenu {
     }
 }
 
-
 macro_rules! select_label {
     ($ui:expr, $variable:expr, $option:expr) => {
-        if $ui.selectable_label($variable == $option, format!("{}", $option)).clicked() {   
+        if $ui
+            .selectable_label($variable == $option, format!("{}", $option))
+            .clicked()
+        {
             $variable = $option
         }
-    }
+    };
 }
 
-
-
-
 pub fn show_help(ui: &mut egui::Ui, config: &mut HelpConfig) {
-
-
     ui.horizontal(|ui| {
         select_label!(ui, config.selected_menu, HelpMenu::Main);
         select_label!(ui, config.selected_menu, HelpMenu::Diagrams);
