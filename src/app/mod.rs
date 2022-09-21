@@ -36,6 +36,7 @@ pub struct MyApp {
     model: Model,
     pointer_mode: pz_map::PointerMode,
     controller: Controller,
+    saved_controller: Controller,
     diagram_config: diagrams::DiagramsConfiguration,
     help_config: help::HelpConfig,
     open_windows: OpenWindows,
@@ -47,6 +48,7 @@ impl MyApp {
             model: Model::default(),
             pointer_mode: pz_map::PointerMode::AddPole,
             controller: Controller::default(),
+            saved_controller: Controller::default(),
             diagram_config: diagrams::DiagramsConfiguration::default(),
             help_config: help::HelpConfig::default(),
             open_windows: OpenWindows::default(),
@@ -78,6 +80,10 @@ impl eframe::App for MyApp {
                 toggable!(ui, self.open_windows.pz_and_tuner, "Tuner");
                 toggable!(ui, self.open_windows.diagrams, "Diagrams");
                 toggable!(ui, self.open_windows.response, "Response");
+                ui.separator();
+                if ui.button("Save controller").clicked() {
+                    self.saved_controller = self.controller.clone();
+                }
             });
 
         if self.open_windows.diagrams {
@@ -85,7 +91,7 @@ impl eframe::App for MyApp {
                 .default_pos((0.0, 0.0))
                 .default_size((400.0, 200.0))
                 .show(ctx, |ui| {
-                    show_bode_plots(ui, &self.model, &self.controller, &mut self.diagram_config);
+                    show_bode_plots(ui, &self.model, &self.controller, &self.saved_controller, &mut self.diagram_config);
                 });
         }
 

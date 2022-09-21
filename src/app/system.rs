@@ -170,7 +170,7 @@ impl<T: DynamicalSystem> DynamicalSystem for &[T] {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Controller {
     pub pid: Pid,
     pub lead_lag: LLController,
@@ -194,6 +194,7 @@ impl DynamicalSystem for Controller {
 }
 
 /// A Pid controller
+#[derive(Clone)]
 pub struct Pid {
     k: f64,
     t_i: f64,
@@ -321,6 +322,7 @@ impl Default for Pid {
     }
 }
 
+#[derive(Clone)]
 pub struct LLController {
     zero_frequency: f64,
     pole_frequency: f64,
