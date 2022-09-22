@@ -91,7 +91,13 @@ impl eframe::App for MyApp {
                 .default_pos((0.0, 0.0))
                 .default_size((400.0, 200.0))
                 .show(ctx, |ui| {
-                    show_bode_plots(ui, &self.model, &self.controller, &self.saved_controller, &mut self.diagram_config);
+                    show_bode_plots(
+                        ui,
+                        &self.model,
+                        &self.controller,
+                        &self.saved_controller,
+                        &mut self.diagram_config,
+                    );
                 });
         }
 
@@ -137,7 +143,13 @@ impl eframe::App for MyApp {
             egui::containers::Window::new("Response")
                 .default_pos((max_x, max_y))
                 .show(ctx, |ui| {
-                    show_response_plot(ui, &self.model, &self.controller);
+                    show_response_plot(
+                        ui,
+                        &self.model,
+                        &self.diagram_config,
+                        &self.controller,
+                        &self.saved_controller,
+                    );
                 });
         }
 

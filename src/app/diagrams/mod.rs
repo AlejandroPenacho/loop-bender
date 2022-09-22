@@ -6,7 +6,7 @@ const PHASE_MARGIN_COLOR: egui::color::Color32 = egui::Color32::from_rgb(255, 14
 pub struct DiagramsConfiguration {
     show_gain_margin: bool,
     show_phase_margin: bool,
-    show_saved_controller: bool,
+    pub show_saved_controller: bool,
     bode_link: egui::widgets::plot::LinkedAxisGroup,
 }
 
@@ -45,45 +45,42 @@ pub fn show_bode_plots(
 
     let saved_system = model.link_system(saved_controller);
 
-
     let (mags, phases, margins) = compute_phase_and_margin(&system, &all_freqs);
 
     let mag_line: egui::plot::PlotPoints = (0..500).map(|i| [all_freqs_expo[i], mags[i]]).collect();
     let phase_line: egui::plot::PlotPoints =
         (0..500).map(|i| [all_freqs_expo[i], phases[i]]).collect();
 
-
     let nyquist_line: egui::plot::PlotPoints = (0..500)
         .map(|i| {
             [
-                10f64.powf(mags[i]/20.0) * phases[i].cos(),
-                10f64.powf(mags[i]/20.0) * phases[i].sin(),
+                10f64.powf(mags[i] / 20.0) * phases[i].cos(),
+                10f64.powf(mags[i] / 20.0) * phases[i].sin(),
             ]
         })
         .collect();
 
+    let (saved_controller_mags, saved_controller_phase, saved_controller_nyquist) =
+        if config.show_saved_controller {
+            let (mags, phases, _) = compute_phase_and_margin(&saved_system, &all_freqs);
 
-    let (saved_controller_mags, saved_controller_phase, saved_controller_nyquist)  = if config.show_saved_controller {
-        let (mags, phases, _) = compute_phase_and_margin(&saved_system, &all_freqs);
+            let mag_line: egui::plot::PlotPoints =
+                (0..500).map(|i| [all_freqs_expo[i], mags[i]]).collect();
+            let phase_line: egui::plot::PlotPoints =
+                (0..500).map(|i| [all_freqs_expo[i], phases[i]]).collect();
 
-        let mag_line: egui::plot::PlotPoints = (0..500).map(|i| [all_freqs_expo[i], mags[i]]).collect();
-        let phase_line: egui::plot::PlotPoints =
-            (0..500).map(|i| [all_freqs_expo[i], phases[i]]).collect();
-
-        let nyquist_line: egui::plot::PlotPoints = (0..500)
-            .map(|i| {
-                [
-                    20f64.powf(mags[i]) * phases[i].cos(),
-                    20f64.powf(mags[i]) * phases[i].sin(),
-                ]
-            })
-            .collect();
-        (Some(mag_line), Some(phase_line), Some(nyquist_line))
-    } else {
-        (None, None, None)
-    };
-
-
+            let nyquist_line: egui::plot::PlotPoints = (0..500)
+                .map(|i| {
+                    [
+                        20f64.powf(mags[i]) * phases[i].cos(),
+                        20f64.powf(mags[i]) * phases[i].sin(),
+                    ]
+                })
+                .collect();
+            (Some(mag_line), Some(phase_line), Some(nyquist_line))
+        } else {
+            (None, None, None)
+        };
 
     let phase_margin_label = match margins.phase_margin {
         Some(x) => format!("{:.1}", x.1 * 180.0 / std::f64::consts::PI),
@@ -165,10 +162,10 @@ pub fn show_bode_plots(
                         if let Some(x) = saved_controller_mags {
                             ui.line(
                                 egui::plot::Line::new(x)
-                                    .style(egui::plot::LineStyle::Dashed{ length: 1.5 })
+                                    .style(egui::plot::LineStyle::Dashed { length: 1.5 }),
                             );
                         }
-                        
+
                         if let Some(margin) = margins.gain_margin {
                             if config.show_gain_margin {
                                 let gain_margin_points: egui::plot::PlotPoints =
@@ -213,7 +210,7 @@ pub fn show_bode_plots(
                         if let Some(x) = saved_controller_phase {
                             ui.line(
                                 egui::plot::Line::new(x)
-                                    .style(egui::plot::LineStyle::Dashed{ length: 1.5 })
+                                    .style(egui::plot::LineStyle::Dashed { length: 1.5 }),
                             );
                         }
 
@@ -268,7 +265,7 @@ pub fn show_bode_plots(
                         if let Some(x) = saved_controller_nyquist {
                             ui.line(
                                 egui::plot::Line::new(x)
-                                    .style(egui::plot::LineStyle::Dashed{ length: 1.5 })
+                                    .style(egui::plot::LineStyle::Dashed { length: 1.5 }),
                             );
                         }
                     });
@@ -351,7 +348,7 @@ fn compute_phase_and_margin<T: DynamicalSystem>(
         .collect::<Vec<f64>>();
 
     let margins = StabilityMargins {
-        gain_margin: phase_cross_point.map(|x| (*x, -20.0*system.get_mag_at_freq(*x).log10())),
+        gain_margin: phase_cross_point.map(|x| (*x, -20.0 * system.get_mag_at_freq(*x).log10())),
         phase_margin: gain_cross_point
             .map(|x| (*x, std::f64::consts::PI + (system.get_phase_at_freq(*x)))),
     };
